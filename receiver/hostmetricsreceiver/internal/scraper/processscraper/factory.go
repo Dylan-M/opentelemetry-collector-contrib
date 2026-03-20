@@ -5,9 +5,10 @@ package processscraper // import "github.com/open-telemetry/opentelemetry-collec
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"runtime"
 
+	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/featuregate"
 	"go.opentelemetry.io/collector/scraper"
@@ -40,12 +41,12 @@ func createDefaultConfig() component.Config {
 
 // createMetricsScraper creates a resource scraper based on provided config.
 func createMetricsScraper(
-	_ context.Context,
+	ctx context.Context,
 	settings scraper.Settings,
 	cfg component.Config,
 ) (scraper.Metrics, error) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "windows" && runtime.GOOS != "darwin" && runtime.GOOS != "freebsd" {
-		return nil, errors.New("process scraper only available on Linux, Windows, macOS, or FreeBSD")
+	if _, err := process.PidsWithContext(ctx); err != nil {
+		return nil, fmt.Errorf("process scraper is not supported on %s: %w", runtime.GOOS, err)
 	}
 
 	s, err := newProcessScraper(settings, cfg.(*Config))
