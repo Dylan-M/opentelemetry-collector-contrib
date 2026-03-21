@@ -1,0 +1,11 @@
+change_type: bug_fix
+
+component: receiver/hostmetrics
+
+note: Move handle count scraping to platform-specific files to avoid noisy errors on non-Windows platforms.
+
+issues: [47095]
+
+subtext:
+
+change_logs: []
