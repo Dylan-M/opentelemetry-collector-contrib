@@ -20,6 +20,10 @@ func (s *processScraper) recordCPUTimeMetric(now pcommon.Timestamp, cpuTime *cpu
 func (s *processScraper) recordCPUUtilization(now pcommon.Timestamp, cpuUtilization ucal.CPUUtilization) {
 }
 
+func (s *processScraper) scrapeAndAppendContextSwitchMetrics(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
+	return nil
+}
+
 func getProcessName(context.Context, processHandle, string) (string, error) {
 	return "", nil
 }
