@@ -7,13 +7,16 @@ package processscraper // import "github.com/open-telemetry/opentelemetry-collec
 
 import (
 	"context"
-	"errors"
+
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 const handleCountMetricsLen = 0
 
-var ErrHandlesPlatformSupport = errors.New("process handle collection is only supported on Windows")
-
 func (*wrappedProcessHandle) GetProcessHandleCountWithContext(context.Context) (int64, error) {
-	return 0, ErrHandlesPlatformSupport
+	return 0, nil
+}
+
+func (s *processScraper) scrapeAndAppendHandlesMetric(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
+	return nil
 }
