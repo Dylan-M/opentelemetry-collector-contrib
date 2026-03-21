@@ -17,6 +17,6 @@ func (*wrappedProcessHandle) GetProcessHandleCountWithContext(context.Context) (
 	return 0, nil
 }
 
-func (s *processScraper) scrapeAndAppendHandlesMetric(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
+func (*processScraper) scrapeAndAppendHandlesMetric(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
 	return nil
 }
