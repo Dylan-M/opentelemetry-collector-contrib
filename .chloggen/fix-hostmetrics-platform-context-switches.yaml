@@ -1,0 +1,11 @@
+change_type: bug_fix
+
+component: receiver/hostmetrics
+
+note: Move context switch scraping to platform-specific files to avoid noisy "not implemented" errors on non-Linux platforms.
+
+issues: [47095]
+
+subtext:
+
+change_logs: []
