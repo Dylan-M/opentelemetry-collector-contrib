@@ -1,0 +1,11 @@
+change_type: bug_fix
+
+component: receiver/hostmetrics
+
+note: Replace hardcoded OS list in process scraper with dynamic gopsutil probe to support new platforms automatically.
+
+issues: [47095]
+
+subtext:
+
+change_logs: []
