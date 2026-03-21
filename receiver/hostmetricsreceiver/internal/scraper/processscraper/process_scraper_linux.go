@@ -7,8 +7,10 @@ package processscraper // import "github.com/open-telemetry/opentelemetry-collec
 
 import (
 	"context"
+	"errors"
 
 	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver/internal/scraper/processscraper/internal/metadata"
@@ -52,6 +54,45 @@ func getProcessCgroup(ctx context.Context, proc processHandle) (string, error) {
 	}
 
 	return cgroup, nil
+}
+
+func (s *processScraper) scrapeAndAppendContextSwitchMetrics(ctx context.Context, now pcommon.Timestamp, handle processHandle) error {
+	if !s.config.Metrics.ProcessContextSwitches.Enabled {
+		return nil
+	}
+
+	threadMap, err := handle.ThreadsWithContext(ctx)
+	if err != nil {
+		return err
+	}
+	contextSwitches := &process.NumCtxSwitchesStat{}
+
+	if len(threadMap) == 1 {
+		contextSwitches, err = handle.NumCtxSwitchesWithContext(ctx)
+		if err != nil {
+			return err
+		}
+	} else {
+		errs := make([]error, 0, len(threadMap))
+		for tid := range threadMap {
+			thread := &process.Process{Pid: tid}
+			threadContextSwitches, err := thread.NumCtxSwitchesWithContext(ctx)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			contextSwitches.Involuntary += threadContextSwitches.Involuntary
+			contextSwitches.Voluntary += threadContextSwitches.Voluntary
+		}
+		if err := errors.Join(errs...); err != nil {
+			return err
+		}
+	}
+
+	s.mb.RecordProcessContextSwitchesDataPoint(now, contextSwitches.Involuntary, metadata.AttributeContextSwitchTypeInvoluntary)
+	s.mb.RecordProcessContextSwitchesDataPoint(now, contextSwitches.Voluntary, metadata.AttributeContextSwitchTypeVoluntary)
+
+	return nil
 }
 
 func getProcessCommand(ctx context.Context, proc processHandle) (*commandMetadata, error) {
