@@ -413,20 +413,8 @@ func (s *processScraper) scrapeAndAppendOpenFileDescriptorsMetric(ctx context.Co
 	return nil
 }
 
-func (s *processScraper) scrapeAndAppendHandlesMetric(ctx context.Context, now pcommon.Timestamp, handle processHandle) error {
-	if !s.config.Metrics.ProcessHandles.Enabled {
-		return nil
-	}
-
-	handleCount, err := handle.GetProcessHandleCountWithContext(ctx)
-	if err != nil {
-		return err
-	}
-
-	s.mb.RecordProcessHandlesDataPoint(now, handleCount)
-
-	return nil
-}
+// scrapeAndAppendHandlesMetric is implemented per-platform.
+// Process handle count is only available on Windows.
 
 func (s *processScraper) scrapeAndAppendSignalsPendingMetric(ctx context.Context, now pcommon.Timestamp, handle processHandle) error {
 	if !s.config.Metrics.ProcessSignalsPending.Enabled {
