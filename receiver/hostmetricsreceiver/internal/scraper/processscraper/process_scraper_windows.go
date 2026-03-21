@@ -28,6 +28,10 @@ func (s *processScraper) recordCPUUtilization(now pcommon.Timestamp, cpuUtilizat
 	s.mb.RecordProcessCPUUtilizationDataPoint(now, cpuUtilization.System, metadata.AttributeStateSystem)
 }
 
+func (s *processScraper) scrapeAndAppendContextSwitchMetrics(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
+	return nil
+}
+
 func getProcessName(_ context.Context, _ processHandle, exePath string) (string, error) {
 	if exePath == "" {
 		return "", errors.New("executable path is empty")
