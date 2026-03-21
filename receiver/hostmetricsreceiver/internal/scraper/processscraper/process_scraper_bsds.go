@@ -28,6 +28,10 @@ func (s *processScraper) recordCPUUtilization(now pcommon.Timestamp, cpuUtilizat
 	s.mb.RecordProcessCPUUtilizationDataPoint(now, cpuUtilization.Iowait, metadata.AttributeStateWait)
 }
 
+func (s *processScraper) scrapeAndAppendContextSwitchMetrics(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
+	return nil
+}
+
 func getProcessName(ctx context.Context, proc processHandle, _ string) (string, error) {
 	name, err := proc.NameWithContext(ctx)
 	if err != nil {
