@@ -28,7 +28,7 @@ func (s *processScraper) recordCPUUtilization(now pcommon.Timestamp, cpuUtilizat
 	s.mb.RecordProcessCPUUtilizationDataPoint(now, cpuUtilization.System, metadata.AttributeStateSystem)
 }
 
-func (s *processScraper) scrapeAndAppendContextSwitchMetrics(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
+func (*processScraper) scrapeAndAppendContextSwitchMetrics(_ context.Context, _ pcommon.Timestamp, _ processHandle) error {
 	return nil
 }
 
