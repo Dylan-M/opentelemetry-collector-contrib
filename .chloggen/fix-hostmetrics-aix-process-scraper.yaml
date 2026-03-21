@@ -1,0 +1,11 @@
+change_type: enhancement
+
+component: receiver/hostmetrics
+
+note: Add AIX process scraper implementation with real gopsutil calls instead of empty stubs.
+
+issues: [47095]
+
+subtext:
+
+change_logs: []
