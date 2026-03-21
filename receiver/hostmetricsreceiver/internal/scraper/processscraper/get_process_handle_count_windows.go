@@ -7,6 +7,8 @@ package processscraper // import "github.com/open-telemetry/opentelemetry-collec
 
 import (
 	"context"
+
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 const handleCountMetricsLen = 1
@@ -16,4 +18,19 @@ func (p *wrappedProcessHandle) GetProcessHandleCountWithContext(ctx context.Cont
 	// GetProcessHandleCount API.
 	fds, err := p.NumFDsWithContext(ctx)
 	return int64(fds), err
+}
+
+func (s *processScraper) scrapeAndAppendHandlesMetric(ctx context.Context, now pcommon.Timestamp, handle processHandle) error {
+	if !s.config.Metrics.ProcessHandles.Enabled {
+		return nil
+	}
+
+	handleCount, err := handle.GetProcessHandleCountWithContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.mb.RecordProcessHandlesDataPoint(now, handleCount)
+
+	return nil
 }
