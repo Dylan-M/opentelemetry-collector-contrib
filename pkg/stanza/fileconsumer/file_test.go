@@ -1730,3 +1730,178 @@ func TestCopyTruncateResetsOffsetOnRestart_IdenticalFirstKB(t *testing.T) {
 	}
 	sink2.ExpectNoCalls(t)
 }
+
+// drainSink reads all available tokens from a sink, returning a map of token -> count.
+// It stops after the specified duration with no new tokens.
+func drainSink(sink *emittest.Sink, drainTimeout time.Duration) map[string]int {
+	tokenCounts := make(map[string]int)
+	for {
+		token := sink.NextTokenWithin(drainTimeout)
+		if token == nil {
+			break
+		}
+		tokenCounts[string(token)]++
+	}
+	return tokenCounts
+}
+
+// TestTopNDefaultCausesDuplication verifies that when ordering_criteria.sort_by
+// is set with mtime sort but top_n is not specified, all matching files are still
+// tracked and no duplication occurs. This is a regression test for a bug where
+// top_n defaulted to 1, causing only one file to be selected per poll. With
+// multiple actively-written files, files would cycle in and out of the tracking
+// window, lose their readers, and be re-read from offset 0.
+// Before the fix, this test produced 774 duplicate emissions across 168 tokens.
+func TestTopNDefaultCausesDuplication(t *testing.T) {
+	// NOT parallel — modifies global feature gate
+	require.NoError(t, featuregate.GlobalRegistry().Set(metadata.FilelogMtimeSortTypeFeatureGate.ID(), true))
+	t.Cleanup(func() {
+		require.NoError(t, featuregate.GlobalRegistry().Set(metadata.FilelogMtimeSortTypeFeatureGate.ID(), false))
+	})
+
+	tempDir := t.TempDir()
+	cfg := NewConfig()
+	cfg.Include = []string{filepath.Join(tempDir, "*.log")}
+	cfg.PollInterval = 50 * time.Millisecond
+	cfg.StartAt = "beginning"
+	// Set ordering_criteria with mtime sort but NO top_n.
+	// Before the fix, this defaulted top_n to 1, selecting only 1 file per poll.
+	cfg.OrderingCriteria = matcher.OrderingCriteria{
+		SortBy: []matcher.Sort{
+			{SortType: "mtime"},
+		},
+	}
+
+	sink := emittest.NewSink(emittest.WithCallBuffer(100000), emittest.WithTimeout(500*time.Millisecond))
+	operator := testManagerWithSink(t, cfg, sink)
+
+	// Create 10 files — more than the 3-generation knownFiles window can sustain
+	// with top_n=1. Each file gets a unique initial line.
+	numFiles := 10
+	files := make([]*os.File, numFiles)
+	for i := range files {
+		name := filepath.Join(tempDir, fmt.Sprintf("host%02d.log", i))
+		f, err := os.Create(name)
+		require.NoError(t, err)
+		_, err = fmt.Fprintf(f, "init-host%02d\n", i)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		time.Sleep(15 * time.Millisecond) // stagger mtimes
+		files[i], err = os.OpenFile(name, os.O_APPEND|os.O_WRONLY, 0o600)
+		require.NoError(t, err)
+	}
+	t.Cleanup(func() {
+		for _, f := range files {
+			f.Close()
+		}
+	})
+
+	require.NoError(t, operator.Start(testutil.NewUnscopedMockPersister()))
+	t.Cleanup(func() { require.NoError(t, operator.Stop()) })
+
+	// Write unique lines to each file in round-robin. Each write updates the file's
+	// mtime, so different files "win" the mtime competition on different polls.
+	for round := 1; round <= 20; round++ {
+		for i, f := range files {
+			msg := fmt.Sprintf("host%02d-round%02d", i, round)
+			_, err := fmt.Fprintf(f, "%s\n", msg)
+			require.NoError(t, err)
+			require.NoError(t, f.Sync())
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
+	// Wait for processing to catch up
+	time.Sleep(2 * time.Second)
+
+	tokenCounts := drainSink(sink, 500*time.Millisecond)
+
+	var duplicates []string
+	totalDuplicateEmissions := 0
+	for token, count := range tokenCounts {
+		if count > 1 {
+			duplicates = append(duplicates, fmt.Sprintf("%s (x%d)", token, count))
+			totalDuplicateEmissions += count - 1
+		}
+	}
+
+	t.Logf("Total unique tokens: %d", len(tokenCounts))
+	t.Logf("Tokens with duplicates: %d", len(duplicates))
+	t.Logf("Total duplicate emissions: %d", totalDuplicateEmissions)
+
+	assert.Empty(t, duplicates, "Expected no duplicates when sort_by is mtime without explicit top_n")
+}
+
+// TestTopNExplicitFixesDuplication is a control test verifying that explicitly
+// setting top_n high enough to include all files produces no duplication.
+func TestTopNExplicitFixesDuplication(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, featuregate.GlobalRegistry().Set(metadata.FilelogMtimeSortTypeFeatureGate.ID(), true))
+	t.Cleanup(func() {
+		require.NoError(t, featuregate.GlobalRegistry().Set(metadata.FilelogMtimeSortTypeFeatureGate.ID(), false))
+	})
+
+	tempDir := t.TempDir()
+	cfg := NewConfig()
+	cfg.Include = []string{filepath.Join(tempDir, "*.log")}
+	cfg.PollInterval = 50 * time.Millisecond
+	cfg.StartAt = "beginning"
+	cfg.OrderingCriteria = matcher.OrderingCriteria{
+		SortBy: []matcher.Sort{
+			{SortType: "mtime"},
+		},
+		TopN: 100, // Explicitly set high — all files included
+	}
+
+	sink := emittest.NewSink(emittest.WithCallBuffer(100000), emittest.WithTimeout(500*time.Millisecond))
+	operator := testManagerWithSink(t, cfg, sink)
+
+	numFiles := 4
+	files := make([]*os.File, numFiles)
+	for i := range files {
+		name := filepath.Join(tempDir, fmt.Sprintf("host%d.log", i))
+		f, err := os.Create(name)
+		require.NoError(t, err)
+		_, err = fmt.Fprintf(f, "initial-line-host%d-000\n", i)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		time.Sleep(10 * time.Millisecond)
+		files[i], err = os.OpenFile(name, os.O_APPEND|os.O_WRONLY, 0o600)
+		require.NoError(t, err)
+	}
+	t.Cleanup(func() {
+		for _, f := range files {
+			f.Close()
+		}
+	})
+
+	require.NoError(t, operator.Start(testutil.NewUnscopedMockPersister()))
+	t.Cleanup(func() { require.NoError(t, operator.Stop()) })
+
+	for round := 1; round <= 8; round++ {
+		for i, f := range files {
+			msg := fmt.Sprintf("host%d-round%d", i, round)
+			_, err := fmt.Fprintf(f, "%s\n", msg)
+			require.NoError(t, err)
+			require.NoError(t, f.Sync())
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	tokenCounts := drainSink(sink, 500*time.Millisecond)
+
+	var duplicates []string
+	for token, count := range tokenCounts {
+		if count > 1 {
+			duplicates = append(duplicates, fmt.Sprintf("%s (x%d)", token, count))
+		}
+	}
+
+	t.Logf("Total unique tokens: %d", len(tokenCounts))
+	t.Logf("Duplicated tokens: %d", len(duplicates))
+
+	assert.Empty(t, duplicates, "Expected no duplicates with explicit top_n=100")
+}

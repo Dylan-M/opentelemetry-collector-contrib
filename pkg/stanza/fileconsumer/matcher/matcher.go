@@ -91,7 +91,7 @@ func New(c Criteria) (*Matcher, error) {
 		return nil, errors.New("'top_n' must be a positive integer")
 	}
 
-	if c.OrderingCriteria.TopN == 0 {
+	if c.OrderingCriteria.TopN == 0 && !orderingCriteriaIsOnlyMtime(c.OrderingCriteria.SortBy) {
 		c.OrderingCriteria.TopN = defaultOrderingCriteriaTopN
 	}
 
@@ -139,9 +139,23 @@ func New(c Criteria) (*Matcher, error) {
 		}
 	}
 
-	m.filterOpts = append(m.filterOpts, filter.TopNOption(c.OrderingCriteria.TopN))
+	if c.OrderingCriteria.TopN > 0 {
+		m.filterOpts = append(m.filterOpts, filter.TopNOption(c.OrderingCriteria.TopN))
+	}
 
 	return m, nil
+}
+
+// orderingCriteriaIsOnlyMtime returns true if all sort options use mtime sorting.
+// mtime sorting is used for processing prioritization across independent files,
+// not for rotation-based file selection, so it should not imply a top_n default.
+func orderingCriteriaIsOnlyMtime(sorts []Sort) bool {
+	for _, s := range sorts {
+		if s.SortType != sortTypeMtime {
+			return false
+		}
+	}
+	return len(sorts) > 0
 }
 
 // orderingCriteriaNeedsRegex returns true if any of the sort options require a regex to be set.

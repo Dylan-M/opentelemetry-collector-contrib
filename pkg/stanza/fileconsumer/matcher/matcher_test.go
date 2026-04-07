@@ -854,6 +854,41 @@ func TestMatcher(t *testing.T) {
 	}
 }
 
+// TestMtimeSortWithoutTopNReturnsAllFiles verifies that when sort_by is mtime
+// and top_n is not explicitly set, all matching files are returned (not just 1).
+// This is a regression test for a bug where top_n defaulted to 1 for all sort types,
+// causing only the single most recently modified file to be selected per poll.
+func TestMtimeSortWithoutTopNReturnsAllFiles(t *testing.T) {
+	enableSortByMTimeFeature(t)
+
+	t.Chdir(t.TempDir())
+
+	files := []string{"a.log", "b.log", "c.log", "d.log"}
+	for _, f := range files {
+		file, err := os.OpenFile(f, os.O_CREATE|os.O_RDWR, 0o600)
+		require.NoError(t, err)
+		_, err = file.WriteString(f)
+		require.NoError(t, err)
+		require.NoError(t, file.Close())
+		time.Sleep(10 * time.Millisecond) // stagger mtimes
+	}
+
+	m, err := New(Criteria{
+		Include: []string{"*.log"},
+		OrderingCriteria: OrderingCriteria{
+			SortBy: []Sort{
+				{SortType: sortTypeMtime},
+			},
+			// TopN intentionally omitted
+		},
+	})
+	require.NoError(t, err)
+
+	result, err := m.MatchFiles()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, files, result, "mtime sort without top_n should return all files")
+}
+
 func enableSortByMTimeFeature(t *testing.T) {
 	if !metadata.FilelogMtimeSortTypeFeatureGate.IsEnabled() {
 		require.NoError(t, featuregate.GlobalRegistry().Set(metadata.FilelogMtimeSortTypeFeatureGate.ID(), true))
