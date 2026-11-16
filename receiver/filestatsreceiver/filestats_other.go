@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build !darwin && !freebsd && !dragonfly && !netbsd && !openbsd && !linux && !solaris && !windows
+//go:build !darwin && !freebsd && !dragonfly && !netbsd && !openbsd && !linux && !solaris && !windows && !aix
 
 package filestatsreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filestatsreceiver"
 
